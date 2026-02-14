@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Eventos - Google Sheets (Link Direto)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0A2540;
+            --primary-light: #1A3A5F;
+            --accent: #00D4AA;
+            --accent-dark: #00B894;
+            --warning: #FFB800;
+            --danger: #FF6B6B;
+            --success: #00D4AA;
+            --text-dark: #0A2540;
+            --text-medium: #5A6C7D;
+            --text-light: #8A97A8;
+            --bg-light: #F8FAFB;
+            --bg-white: #FFFFFF;
+            --border: #E4E9F0;
+            --shadow: rgba(10, 37, 64, 0.1);
+        }
+
+        body {
+            font-family: 'Work Sans', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #F8FAFB 0%, #EEF2F7 100%);
+            color: var(--text-dark);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(248, 250, 251, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 1.1rem;
+            color: var(--text-medium);
+            font-weight: 500;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .config-notice {
+            background: linear-gradient(135deg, #00D4AA 0%, #00B894 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 16px rgba(0, 212, 170, 0.3);
+        }
+
+        .config-notice-title {
+            font-weight: 700;
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+        }
+
+        .config-notice-steps {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .config-notice-steps ol {
+            margin-left: 1.5rem;
+            line-height: 1.8;
+        }
+
+        .config-notice-steps code {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+
+        .header {
+            background: var(--primary);
+            padding: 2.5rem 3rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(0, 212, 170, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--bg-white);
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .header-subtitle {
+            color: var(--accent);
+            font-size: 1.1rem;
+            font-weight: 500;
+            opacity: 0.95;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 3rem;
+            margin-top: 2rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.95rem;
+        }
+
+        .header-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-white);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 24px rgba(10, 37, 64, 0.06);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--border);
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 32px rgba(10, 37, 64, 0.12);
+        }
+
+        .kpi-card {
+            grid-column: span 3;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
+        }
+
+        .kpi-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-medium);
+            margin-bottom: 1rem;
+        }
+
+        .kpi-value {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+
+        .kpi-change {
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            background: rgba(0, 212, 170, 0.1);
+            color: var(--success);
+        }
+
+        .kpi-icon {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            border-radius: 12px;
+            opacity: 0.2;
+            font-size: 24px;
+        }
+
+        .chart-card {
+            grid-column: span 6;
+        }
+
+        .chart-card.large {
+            grid-column: span 8;
+        }
+
+        .chart-card.small {
+            grid-column: span 4;
+        }
+
+        .card-header {
+            margin-bottom: 2rem;
+        }
+
+        .card-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+        }
+
+        .card-subtitle {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .table-container {
+            grid-column: span 12;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        thead {
+            background: var(--bg-light);
+        }
+
+        th {
+            padding: 1rem 1.5rem;
+            text-align: left;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-medium);
+            border-bottom: 2px solid var(--border);
+        }
+
+        th:first-child {
+            border-radius: 12px 0 0 0;
+        }
+
+        th:last-child {
+            border-radius: 0 12px 0 0;
+        }
+
+        td {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-dark);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background: var(--bg-light);
+        }
+
+        .event-name {
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .event-date {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.35rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .status-badge.concluído {
+            background: rgba(0, 212, 170, 0.15);
+            color: var(--success);
+        }
+
+        .status-badge.andamento {
+            background: rgba(255, 184, 0, 0.15);
+            color: var(--warning);
+        }
+
+        .status-badge.planejamento {
+            background: rgba(90, 108, 125, 0.15);
+            color: var(--text-medium);
+        }
+
+        .metric-positive {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .filters {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .refresh-btn {
+            margin-left: auto;
+            padding: 0.75rem 1.5rem;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .refresh-btn:hover {
+            background: var(--accent-dark);
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 1200px) {
+            .kpi-card, .chart-card, .chart-card.small, .chart-card.large {
+                grid-column: span 6;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .kpi-card, .chart-card, .chart-card.small, .chart-card.large {
+                grid-column: span 12;
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingScreen" class="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Carregando dados do Google Sheets...</div>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- Config Notice -->
+        <div id="configNotice" class="config-notice">
+            <div class="config-notice-title">📋 Configure os Links CSV do Google Sheets</div>
+            <p>Cole os 3 links de publicação CSV abaixo no código (procure por "COLE AQUI"):</p>
+            
+            <div class="config-notice-steps">
+                <strong>Como obter os links:</strong>
+                <ol>
+                    <li>Na sua planilha, vá em <code>Arquivo → Compartilhar → Publicar na web</code></li>
+                    <li>Para cada aba (<code>Eventos</code>, <code>Leads_Mensais</code>, <code>Resumo</code>):</li>
+                    <li>Selecione a aba específica + escolha <code>Valores separados por vírgula (.csv)</code></li>
+                    <li>Clique <code>Publicar</code> e copie o link gerado</li>
+                    <li>Cole cada link na seção correspondente do código</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="header">
+            <div class="header-content">
+                <h1>Dashboard de Eventos</h1>
+                <p class="header-subtitle">Visão Executiva - Dados do Google Sheets</p>
+                <div class="header-meta">
+                    <div class="header-meta-item">
+                        <span>📅</span>
+                        <span>Período: 2026</span>
+                    </div>
+                    <div class="header-meta-item">
+                        <span>🔄</span>
+                        <span id="headerUpdate">Atualizado: Carregando...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <button class="refresh-btn" onclick="loadAllData()">
+                <span>🔄</span>
+                <span>Atualizar Dados</span>
+            </button>
+        </div>
+
+        <div class="dashboard-grid" id="dashboardContent">
+            <div class="card kpi-card">
+                <div class="kpi-icon">💰</div>
+                <div class="kpi-label">Receita Total</div>
+                <div class="kpi-value" id="kpiReceita">R$ 0</div>
+                <span class="kpi-change">Carregando...</span>
+            </div>
+
+            <div class="card kpi-card">
+                <div class="kpi-icon">💸</div>
+                <div class="kpi-label">Custo Total</div>
+                <div class="kpi-value" id="kpiCusto">R$ 0</div>
+                <span class="kpi-change">Carregando...</span>
+            </div>
+
+            <div class="card kpi-card">
+                <div class="kpi-icon">📊</div>
+                <div class="kpi-label">Margem Líquida</div>
+                <div class="kpi-value" id="kpiMargem">0%</div>
+                <span class="kpi-change">Carregando...</span>
+            </div>
+
+            <div class="card kpi-card">
+                <div class="kpi-icon">👥</div>
+                <div class="kpi-label">Leads Gerados</div>
+                <div class="kpi-value" id="kpiLeads">0</div>
+                <span class="kpi-change">Carregando...</span>
+            </div>
+
+            <div class="card chart-card large">
+                <div class="card-header">
+                    <h3 class="card-title">Receita vs Custos por Evento</h3>
+                    <p class="card-subtitle">Análise comparativa de performance financeira</p>
+                </div>
+                <canvas id="receitaCustoChart"></canvas>
+            </div>
+
+            <div class="card chart-card small">
+                <div class="card-header">
+                    <h3 class="card-title">ROI por Evento</h3>
+                    <p class="card-subtitle">Retorno sobre investimento</p>
+                </div>
+                <canvas id="roiChart"></canvas>
+            </div>
+
+            <div class="card chart-card">
+                <div class="card-header">
+                    <h3 class="card-title">Leads Gerados no CRM</h3>
+                    <p class="card-subtitle">Evolução mensal de captação</p>
+                </div>
+                <canvas id="leadsChart"></canvas>
+            </div>
+
+            <div class="card chart-card">
+                <div class="card-header">
+                    <h3 class="card-title">Performance por Evento</h3>
+                    <p class="card-subtitle">Participantes vs Leads gerados</p>
+                </div>
+                <canvas id="performanceChart"></canvas>
+            </div>
+
+            <div class="card table-container">
+                <div class="card-header">
+                    <h3 class="card-title">Detalhamento por Evento</h3>
+                    <p class="card-subtitle">Visão completa de performance e resultados</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Evento</th>
+                            <th>Data</th>
+                            <th>Status</th>
+                            <th>Participantes</th>
+                            <th>Custo</th>
+                            <th>Receita</th>
+                            <th>Margem</th>
+                            <th>Leads CRM</th>
+                            <th>Conv. %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventosTableBody">
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 2rem;">
+                                Carregando dados...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURAÇÃO - COLE AQUI OS LINKS CSV
+        // ========================================
+        
+        // IMPORTANTE: Cole os links COMPLETOS de publicação CSV de cada aba
+        
+        const CSV_URLS = {
+            // Link CSV da aba "Eventos"
+            eventos: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxtUexqJst7Oy4vwHB6xeOPABM2QJ-FL2s6nKNeMhCrrsyrQs01CRrFpqgenS0lh1Y78421_0dsiz0/pub?gid=0&single=true&output=csv',
+            
+            // Link CSV da aba "Leads_Mensais"  
+            leadsMensais: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxtUexqJst7Oy4vwHB6xeOPABM2QJ-FL2s6nKNeMhCrrsyrQs01CRrFpqgenS0lh1Y78421_0dsiz0/pub?gid=665082078&single=true&output=csv',
+            
+            // Link CSV da aba "Resumo"
+            resumo: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxtUexqJst7Oy4vwHB6xeOPABM2QJ-FL2s6nKNeMhCrrsyrQs01CRrFpqgenS0lh1Y78421_0dsiz0/pub?gid=912528984&single=true&output=csv'
+        };
+
+        // ========================================
+        // RESTO DO CÓDIGO (NÃO MEXA AQUI)
+        // ========================================
+        
+        let eventosData = [];
+        let leadsMensaisData = [];
+        let resumoData = {};
+        let charts = {};
+
+        Chart.defaults.font.family = "'Work Sans', sans-serif";
+        Chart.defaults.color = '#5A6C7D';
+
+        async function loadAllData() {
+            try {
+                document.getElementById('loadingScreen').classList.remove('hidden');
+                
+                await Promise.all([
+                    loadEventos(),
+                    loadLeadsMensais(),
+                    loadResumo()
+                ]);
+
+                updateKPIs();
+                updateCharts();
+                updateTable();
+                updateHeader();
+
+                document.getElementById('loadingScreen').classList.add('hidden');
+                
+                if (eventosData.length > 0) {
+                    document.getElementById('configNotice').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+                document.getElementById('loadingScreen').classList.add('hidden');
+                alert('Erro ao carregar dados. Verifique:\n1. Links CSV estão corretos\n2. Planilha está pública\n3. Abas foram publicadas individualmente');
+            }
+        }
+
+        async function loadEventos() {
+            const response = await fetch(CSV_URLS.eventos);
+            const csvText = await response.text();
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            eventosData = parsed.data;
+        }
+
+        async function loadLeadsMensais() {
+            const response = await fetch(CSV_URLS.leadsMensais);
+            const csvText = await response.text();
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            leadsMensaisData = parsed.data;
+        }
+
+        async function loadResumo() {
+            const response = await fetch(CSV_URLS.resumo);
+            const csvText = await response.text();
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            
+            resumoData = {};
+            parsed.data.forEach(row => {
+                if (row.Métrica && row.Valor) {
+                    resumoData[row.Métrica] = row.Valor;
+                }
+            });
+        }
+
+        function updateKPIs() {
+            const receitaTotal = eventosData.reduce((sum, ev) => sum + parseFloat(ev.Receita || 0), 0);
+            const custoTotal = eventosData.reduce((sum, ev) => sum + parseFloat(ev.Custo || 0), 0);
+            const leadsTotal = eventosData.reduce((sum, ev) => sum + parseInt(ev['Leads CRM'] || 0), 0);
+            const margem = receitaTotal > 0 ? ((receitaTotal - custoTotal) / receitaTotal * 100) : 0;
+
+            document.getElementById('kpiReceita').textContent = formatCurrency(receitaTotal);
+            document.getElementById('kpiCusto').textContent = formatCurrency(custoTotal);
+            document.getElementById('kpiMargem').textContent = margem.toFixed(1) + '%';
+            document.getElementById('kpiLeads').textContent = leadsTotal.toLocaleString('pt-BR');
+        }
+
+        function updateCharts() {
+            Object.values(charts).forEach(chart => chart?.destroy());
+
+            createReceitaCustoChart();
+            createROIChart();
+            createLeadsChart();
+            createPerformanceChart();
+        }
+
+        function createReceitaCustoChart() {
+            const ctx = document.getElementById('receitaCustoChart').getContext('2d');
+            const labels = eventosData.map(ev => ev['Nome do Evento']);
+            const receitas = eventosData.map(ev => parseFloat(ev.Receita || 0));
+            const custos = eventosData.map(ev => parseFloat(ev.Custo || 0));
+
+            charts.receitaCusto = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Receita',
+                            data: receitas,
+                            backgroundColor: 'rgba(0, 212, 170, 0.8)',
+                            borderRadius: 8,
+                        },
+                        {
+                            label: 'Custo',
+                            data: custos,
+                            backgroundColor: 'rgba(255, 107, 107, 0.8)',
+                            borderRadius: 8,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ctx.dataset.label + ': ' + formatCurrency(ctx.parsed.y)
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: (value) => formatCurrency(value) }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createROIChart() {
+            const ctx = document.getElementById('roiChart').getContext('2d');
+            const labels = eventosData.map(ev => ev['Nome do Evento']);
+            const rois = eventosData.map(ev => {
+                const receita = parseFloat(ev.Receita || 0);
+                const custo = parseFloat(ev.Custo || 0);
+                return custo > 0 ? ((receita - custo) / custo * 100) : 0;
+            });
+
+            charts.roi = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: rois,
+                        backgroundColor: [
+                            'rgba(0, 212, 170, 0.9)',
+                            'rgba(0, 184, 148, 0.9)',
+                            'rgba(255, 184, 0, 0.9)',
+                            'rgba(138, 151, 168, 0.9)',
+                            'rgba(10, 37, 64, 0.9)'
+                        ],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ctx.label + ': +' + ctx.parsed.toFixed(1) + '%'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createLeadsChart() {
+            const ctx = document.getElementById('leadsChart').getContext('2d');
+            const labels = leadsMensaisData.map(row => row.Mês);
+            const leads = leadsMensaisData.map(row => parseInt(row['Leads Gerados'] || 0));
+
+            charts.leads = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Leads Gerados',
+                        data: leads,
+                        borderColor: '#00D4AA',
+                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function createPerformanceChart() {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            const labels = eventosData.map(ev => ev['Nome do Evento']);
+            const participantes = eventosData.map(ev => parseInt(ev.Participantes || 0));
+            const leads = eventosData.map(ev => parseInt(ev['Leads CRM'] || 0));
+
+            charts.performance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Participantes',
+                            data: participantes,
+                            backgroundColor: 'rgba(10, 37, 64, 0.7)',
+                            borderRadius: 8,
+                        },
+                        {
+                            label: 'Leads CRM',
+                            data: leads,
+                            backgroundColor: 'rgba(0, 212, 170, 0.8)',
+                            borderRadius: 8,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function updateTable() {
+            const tbody = document.getElementById('eventosTableBody');
+            tbody.innerHTML = '';
+
+            eventosData.forEach(evento => {
+                const receita = parseFloat(evento.Receita || 0);
+                const custo = parseFloat(evento.Custo || 0);
+                const margem = custo > 0 ? ((receita - custo) / custo * 100) : 0;
+                
+                const row = `
+                    <tr>
+                        <td>
+                            <div class="event-name">${evento['Nome do Evento'] || 'N/A'}</div>
+                            <div class="event-date">${evento.Cidade || 'N/A'}</div>
+                        </td>
+                        <td>${evento.Data || 'N/A'}</td>
+                        <td><span class="status-badge ${evento.Status?.toLowerCase() || 'planejamento'}">${evento.Status || 'N/A'}</span></td>
+                        <td>${parseInt(evento.Participantes || 0).toLocaleString('pt-BR')}</td>
+                        <td>${formatCurrency(custo)}</td>
+                        <td>${formatCurrency(receita)}</td>
+                        <td class="metric-positive">+${margem.toFixed(0)}%</td>
+                        <td>${parseInt(evento['Leads CRM'] || 0).toLocaleString('pt-BR')}</td>
+                        <td class="metric-positive">${evento['Taxa Conversão'] || 'N/A'}%</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        function updateHeader() {
+            const now = new Date();
+            document.getElementById('headerUpdate').textContent = 
+                `Atualizado: ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+
+        window.addEventListener('load', () => {
+            loadAllData();
+        });
+    </script>
+</body>
+</html>
